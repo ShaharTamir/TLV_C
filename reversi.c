@@ -1,6 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define FIRST_DEPTH 0
+#define BOTH_DONT_HAVE_MOVES 2
+
+typedef enum
+{
+    DONT_FLIP,
+    FLIP
+} toFlip;
+
 typedef enum
 {
     WHITE,
@@ -29,8 +38,10 @@ typedef struct
 } point;
 
 static int g_board_size = -1;
+static int g_empty_cells = 0;
 static const char g_player[NUM_PLAYERS] = {'O', 'X', ' '};
 static char** g_board;
+static point g_scores = {0, 0};
 
 /* main methods */
 int GetBoardSizeFromUser();
@@ -42,22 +53,17 @@ void RunGame();
 int HaveMoves(players turn);
 void ReceiveMoveFromPlayer(point* move, players turn);
 void PlayTheMove(point* move, players turn);
-int IsGameOver();
+int GameOver();
 
 /* HaveMoves & ReceiveMove */
 int IsMoveValid(point* p, players turn);
-int HaveColorAround(point* p);
+/* PlayTheMove & IsMoveValid*/
+int CheckDirectionAndFlip(srounding s, point pos, players turn, int depth, char toFlip);
 
 /* Enable moving */
 point UpdatePos(point* p, srounding s);
 int IsColorHere(point* p, players color);
 int IsPosValid(point* p);
-
-/* PlayTheMove */
-int CheckDirectionAndFlip(srounding s, point pos, players turn);
-
-/* IsGameOver */
-void DeclareWinner(int white, int black);
 
 int main()
 {
@@ -73,9 +79,7 @@ int main()
             RunGame();
         }
         else
-        {
             printf("could not allocate memory for board.\n");
-        }
     }
 
     printf("Goodbye!\n");
@@ -108,6 +112,7 @@ int GetBoardSizeFromUser()
             received_size = 20;
             break;
         default:
+            received_size = 4;
             printf("You choose poorly...\n");
     }
 
@@ -117,7 +122,6 @@ int GetBoardSizeFromUser()
 char** InitGame()
 {
     char** new_board;
-
     new_board = (char **)malloc((size_t)(g_board_size * sizeof(char*)));
     
     if(new_board)
@@ -126,30 +130,24 @@ char** InitGame()
         {
             new_board[i] = (char *)malloc((size_t)g_board_size);
             if(new_board[i])
-            {
                 for(int j = 0; j < g_board_size; ++j)
-                {
                     new_board[i][j] = g_player[EMPTY];
-                }
-            }
+
             else
             {
                 for(int k = 0; k <= i; ++k)
-                {
                     free(new_board[k]);
-                }
                 
                 free(new_board);
+                return NULL; /* failed to init board */
             }    
         }
 
-        if(new_board)
-        {
-            new_board[g_board_size / 2][g_board_size / 2] = g_player[WHITE];  /* down right in middle */
-            new_board[g_board_size / 2 - 1][g_board_size / 2 - 1] = g_player[WHITE];  /* up left in middle */
-            new_board[g_board_size / 2][g_board_size / 2 - 1] = g_player[BLACK];  /* down left in middle */
-            new_board[g_board_size / 2 - 1][g_board_size / 2] = g_player[BLACK];  /* up right in middle */
-        }
+        new_board[g_board_size / 2][g_board_size / 2] = g_player[WHITE];  /* down right in middle */
+        new_board[g_board_size / 2 - 1][g_board_size / 2 - 1] = g_player[WHITE];  /* up left in middle */
+        new_board[g_board_size / 2][g_board_size / 2 - 1] = g_player[BLACK];  /* down left in middle */
+        new_board[g_board_size / 2 - 1][g_board_size / 2] = g_player[BLACK];  /* up right in middle */
+        g_empty_cells = g_board_size * g_board_size - 4;
     }
 
     return new_board;
@@ -162,13 +160,9 @@ void PrintBoard()
     for(int i = 0; i < g_board_size; ++i)
     {
         if(i + 1 > 9)
-        {
             printf(" %d ", i + 1);    
-        }
         else
-        {
             printf(" %d  ", i + 1);
-        }
     }
     printf("\n");
 
@@ -180,13 +174,9 @@ void PrintBoard()
             {
                 /* print number of columns */
                 if(i + 1 > 9)
-                {
                     printf("%d ", i + 1);
-                }
                 else
-                {
                     printf("%d  ", i +1);
-                }
             }
             printf("| %c ", g_board[i][j]);
         }
@@ -199,46 +189,48 @@ void RunGame()
     players turn = BLACK;
     int game_over = 0;
     int have_moves = 0;
+    int no_moves_counter = 0;
     point move = {0, 0};
 
-    while(!game_over)
+    while(g_empty_cells && no_moves_counter < BOTH_DONT_HAVE_MOVES)
     {
         printf("It's %c turn!\n", g_player[turn]);
         have_moves = HaveMoves(turn);
 
         if(have_moves)
         {
+            no_moves_counter = 0;
             ReceiveMoveFromPlayer(&move, turn);
             PlayTheMove(&move, turn);
             PrintBoard();
-            game_over = IsGameOver();
         }
         else
         {
             printf("\nNo possible moves for player %c\n", g_player[turn]);
+            ++no_moves_counter;
         }
 
         turn = !turn;
     }
+    
+    GameOver();
+    
+    if(g_scores.x > g_scores.y)
+        printf("\n\n%c player win!! with %d points over %d points!!!\n\n", g_player[WHITE], g_scores.x, g_scores.y);
+    else if(g_scores.y > g_scores.x)
+        printf("\n\n%c player win!! with %d points over %d points!!!\n\n", g_player[BLACK], g_scores.y, g_scores.x);
+    else
+        printf("\n\nIt's.... a tie....\n\n");
 }
 
 int HaveMoves(players turn)
 {
     point p = {0 ,0};
 
-    while(p.x < g_board_size)
-    {
-        p.y = 0;
-        while(p.y < g_board_size)
-        {
+    for(p.x = 0; p.x < g_board_size; ++p.x)
+        for(p.y = 0; p.y < g_board_size; ++p.y)
             if(IsMoveValid(&p, turn))
-            {
-                return 1;
-            }
-            ++p.y;
-        }
-        ++p.x;
-    }
+                    return 1;
 
     return 0;
 }
@@ -267,34 +259,55 @@ void ReceiveMoveFromPlayer(point* move, players turn)
 void PlayTheMove(point* move, players turn)
 {
     g_board[move->x][move->y] = g_player[turn];
+    --g_empty_cells;
 
     for(srounding s = 0; s < NUM_AROUND; ++s)
-    {
-        CheckDirectionAndFlip(s, UpdatePos(move, s), turn);
-    }
+        CheckDirectionAndFlip(s, UpdatePos(move, s), turn, FIRST_DEPTH, FLIP);
+}
+
+int GameOver()
+{
+    point pos = {0, 0};
+    g_scores.x = 0;
+    g_scores.y = 0;
+    
+    for(;pos.x < g_board_size; ++pos.x)
+        for(pos.y = 0; pos.y < g_board_size; ++pos.y)
+        {
+            if(g_board[pos.x][pos.y] == g_player[WHITE])
+                ++g_scores.x;
+            else if(g_board[pos.x][pos.y] == g_player[BLACK])
+                ++g_scores.y;
+        }
+
+    return 1;
 }
 
 int IsMoveValid(point* p, players turn)
 {
-    return IsPosValid(p) && g_board[p->x][p->y] == g_player[EMPTY] && HaveColorAround(p);
+    if(IsPosValid(p) && g_board[p->x][p->y] == g_player[EMPTY])
+        for(srounding s = 0; s < NUM_AROUND; ++s)
+            if(CheckDirectionAndFlip(s, UpdatePos(p, s), turn, FIRST_DEPTH, DONT_FLIP))
+                return 1;
+    
+    return 0;
 }
 
-int HaveColorAround(point* p)
+int CheckDirectionAndFlip(srounding s, point pos, players turn, int depth, char toFlip)
 {
-    srounding s = 0;
-    point new_p;
-
-    while(s < NUM_AROUND)
+    if(IsColorHere(&pos, !turn))
     {
-        new_p = UpdatePos(p, s);
-        if(IsPosValid(&new_p) && g_board[new_p.x][new_p.y] != g_player[EMPTY])
+        if(CheckDirectionAndFlip(s, UpdatePos(&pos, s), turn, depth + 1, toFlip))
         {
+            if(toFlip)
+                g_board[pos.x][pos.y] = g_player[turn]; /* flip and continue flip until the starting pos. */
             return 1;
         }
-        ++s;
     }
+    else if(IsColorHere(&pos, turn) && depth)
+        return 1;   /* means found the closing point. all between this and the start should be flipped. */
 
-    return 0;
+    return 0;   /* means empty or ended without the same color. */
 }
 
 int IsColorHere(point* p, players color)
@@ -346,66 +359,4 @@ point UpdatePos(point* p, srounding s)
     }
 
     return new_point;
-}
-
-int CheckDirectionAndFlip(srounding s, point pos, players turn)
-{
-    if(IsColorHere(&pos, !turn))
-    {
-        if(CheckDirectionAndFlip(s, UpdatePos(&pos, s), turn))
-        {
-            g_board[pos.x][pos.y] = g_player[turn]; /* flip and continue flip until the starting pos. */
-            return 1;
-        }
-    }
-    else if(IsColorHere(&pos, turn))
-    {
-        return 1;   /* means found the closing point. all between this and the start should be flipped. */
-    }
-
-    return 0;   /* means empty or ended without the same color. */
-}
-
-int IsGameOver()
-{
-    point pos = {0, 0};
-    int white_score = 0;
-    int black_score = 0;
-    
-    while(pos.x < g_board_size)
-    {
-        pos.y = 0;
-        while(pos.y < g_board_size)
-        {
-            if(g_board[pos.x][pos.y] == g_player[EMPTY])
-                return 0; /* here means there are still empty cells - the game is not over */
-            else if(g_board[pos.x][pos.y] == g_player[WHITE])
-                ++white_score;
-            else
-                ++black_score;
-            ++pos.y;
-        }
-        ++pos.x;
-    }
-
-    /* here means game over */
-    DeclareWinner(white_score, black_score);
-
-    return 1;
-}
-
-void DeclareWinner(int white, int black)
-{
-    if(white > black)
-    {
-        printf("\n\n%c player win!! with %d points over %d points!!!\n\n", g_player[WHITE], white, black);
-    }
-    else if(black > white)
-    {
-        printf("\n\n%c player win!! with %d points over %d points!!!\n\n", g_player[BLACK], black, white);
-    }
-    else
-    {
-        printf("\n\nIt's.... a tie....\n\n");
-    }
 }
