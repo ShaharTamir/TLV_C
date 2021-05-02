@@ -51,8 +51,8 @@ void RunGame();
 
 /* RunGameFlow */
 int HaveMoves(players turn);
-void ReceiveMoveFromPlayer(point* move, players turn);
-void PlayTheMove(point* move, players turn);
+void PlayerTurn(point* move, players turn);
+int PlayTheMove(point* move, players turn);
 int GameOver();
 
 /* HaveMoves & ReceiveMove */
@@ -200,8 +200,7 @@ void RunGame()
         if(have_moves)
         {
             no_moves_counter = 0;
-            ReceiveMoveFromPlayer(&move, turn);
-            PlayTheMove(&move, turn);
+            PlayerTurn(&move, turn);
             PrintBoard();
         }
         else
@@ -235,11 +234,11 @@ int HaveMoves(players turn)
     return 0;
 }
 
-void ReceiveMoveFromPlayer(point* move, players turn)
+void PlayerTurn(point* move, players turn)
 {
-    int valid = 0;
+    int played = 0;
 
-    while(!valid)
+    while(!played)
     {
         printf("\nplease enter index for your move\naccording to board printed coordinates:\n");
         printf("row: ");
@@ -249,20 +248,27 @@ void ReceiveMoveFromPlayer(point* move, players turn)
         --move->x;
         --move->y;
 
-        if(IsMoveValid(move, turn))
-            ++valid;
+        if(PlayTheMove(move, turn))
+        {
+            ++played;
+            --g_empty_cells;
+            g_board[move->x][move->y] = g_player[turn];
+        }
         else
             printf("\nposition is not valid.\n");
     }
 }
 
-void PlayTheMove(point* move, players turn)
+int PlayTheMove(point* move, players turn)
 {
-    g_board[move->x][move->y] = g_player[turn];
-    --g_empty_cells;
+    int valid = 0;
 
-    for(srounding s = 0; s < NUM_AROUND; ++s)
-        CheckDirectionAndFlip(s, UpdatePos(move, s), turn, FIRST_DEPTH, FLIP);
+    if(IsPosValid(move) && g_board[move->x][move->y] == g_player[EMPTY])
+        for(srounding s = 0; s < NUM_AROUND; ++s)
+            if(CheckDirectionAndFlip(s, UpdatePos(move, s), turn, FIRST_DEPTH, FLIP))
+                ++valid;
+    
+    return valid;
 }
 
 int GameOver()
