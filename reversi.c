@@ -55,7 +55,7 @@ void PlayerTurn(point* move, players turn);
 int PlayTheMove(point* move, players turn);
 int GameOver();
 
-/* HaveMoves & ReceiveMove */
+/* HaveMoves */
 int IsMoveValid(point* p, players turn);
 /* PlayTheMove & IsMoveValid*/
 int CheckDirectionAndFlip(srounding s, point pos, players turn, int depth, char toFlip);
