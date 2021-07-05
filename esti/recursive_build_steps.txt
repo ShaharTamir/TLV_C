@@ -1,0 +1,8 @@
+1. divide the function:  validate, success, result;
+2. understand when validate fail -> return fail;
+3. understand when successs -> return success;
+4. recursive call -> understand what we need to do and keep the result 
+to send it back in the recursive return;
+5. TRACE -> mark that position is checked.
+(only if neccessary for the recursive functionality,
+ probably need it).
